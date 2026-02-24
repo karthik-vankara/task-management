@@ -2,7 +2,9 @@ package com.karthik.task_management_backend.exception;
 
 import com.karthik.task_management_backend.dto.ErrorResponseDTO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
@@ -97,9 +99,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /**
      * Handle validation errors (@Valid annotation failures)
      */
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponseDTO> handleValidationExceptions(
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException ex,
+            org.springframework.http.HttpHeaders headers,
+            org.springframework.http.HttpStatusCode status,
             WebRequest request
     ) {
         log.warn("Validation error: {}", ex.getMessage());
