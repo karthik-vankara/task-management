@@ -1,0 +1,43 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+logging:
+  level:
+    root: WARN
+    com.karthik: DEBUG
+
+spring:
+  application:
+    name: task-management-backend
+
+  datasource:
+    url: jdbc:h2:mem:task_management_test
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+    
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test-client-id
+            client-secret: test-client-secret
+            redirect-uri: http://localhost:8080/api/auth/callback
+
+# JWT Configuration for tests
+app:
+  jwt:
+    secret: test-secret-key-that-must-be-at-least-32-characters-long
+    expiration: 86400000
