@@ -70,7 +70,7 @@ public class AuthService {
             ClientRegistration googleClient = clientRegistrationRepository.findByRegistrationId("google");
             if (googleClient == null) {
                 log.error("Google OAuth2 client registration not found");
-                throw new OAuth2AuthorizationException("Google OAuth2 client not configured");
+                throw new RuntimeException("Google OAuth2 client not configured");
             }
 
             // Build authorization URL with required parameters
