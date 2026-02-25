@@ -42,9 +42,10 @@ public class JwtAuthenticationProvider implements AuthenticationProvider {
             String role = jwtToken.getRole();
             Long userId = jwtToken.getUserId();
             String email = jwtToken.getEmail();
+            String name = jwtToken.getName();
 
-            log.debug("Authenticating JWT token for userId: {}, email: {}, role: {}", 
-                    userId, email, role);
+            log.debug("Authenticating JWT token for userId: {}, email: {}, name: {}, role: {}", 
+                    userId, email, name, role);
 
             // Convert role string to Spring Security authority format
             // Example: "ADMIN" → "ROLE_ADMIN"
@@ -54,7 +55,7 @@ public class JwtAuthenticationProvider implements AuthenticationProvider {
 
             // Create authenticated token with authorities
             JwtAuthenticationToken authenticatedToken = 
-                    new JwtAuthenticationToken(jwtToken.getToken(), userId, email, role, authorities);
+                    new JwtAuthenticationToken(jwtToken.getToken(), userId, email, name, role, authorities);
             
             authenticatedToken.setAuthenticated(true);
 

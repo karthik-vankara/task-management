@@ -182,9 +182,9 @@ public class AuthService {
             log.debug("Step 4: Creating or updating user in database");
             User user = createOrUpdateUser(googleId, email, name, avatarUrl);
 
-            // Generate JWT token
+            // Generate JWT token with name included
             log.debug("Step 5: Generating JWT token");
-            String jwtToken = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
+            String jwtToken = jwtService.generateToken(user.getId(), user.getEmail(), user.getName(), user.getRole().name());
             
             log.info("OAuth2 callback completed successfully - JWT generated for user: {} ({})", 
                     user.getId(), user.getEmail());
