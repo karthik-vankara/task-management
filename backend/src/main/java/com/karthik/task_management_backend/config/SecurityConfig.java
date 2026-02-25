@@ -49,7 +49,6 @@ public class SecurityConfig {
     private static final String[] PUBLIC_PATTERNS = {
             "/api/auth/login",
             "/api/auth/callback",
-            "/login/oauth2/code/google",
             "/health",
             "/actuator/**",
             "/swagger-ui/**",

@@ -128,10 +128,6 @@ public class AuthController {
         }
 
         // Extract user information from JWT token
-        // Token was validated and claims extracted by JwtAuthenticationFilter
-        Object principal = authentication.getPrincipal();
-        
-        // For JWT authentication, extract from SecurityContext
         Long userId = null;
         String email = null;
         String name = null;
@@ -142,10 +138,11 @@ public class AuthController {
                     (com.karthik.task_management_backend.security.JwtAuthenticationToken) authentication;
             userId = jwtToken.getUserId();
             email = jwtToken.getEmail();
+            name = jwtToken.getName();
             role = jwtToken.getRole();
-            // Note: name would need to be fetched from database in production
         }
 
+        // Return user profile data from JWT token claims
         UserProfileResponse response = UserProfileResponse.builder()
                 .userId(userId)
                 .email(email)
@@ -193,6 +190,10 @@ public class AuthController {
 
     /**
      * User profile response DTO
+     */
+    /**
+     * User profile response DTO
+     * Returns authenticated user's profile information
      */
     @lombok.Data
     @lombok.Builder

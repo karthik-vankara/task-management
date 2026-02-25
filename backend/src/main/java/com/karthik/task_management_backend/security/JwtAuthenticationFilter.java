@@ -57,14 +57,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     // Extract claims from token
                     Long userId = jwtService.getUserIdFromToken(token);
                     String email = jwtService.getEmailFromToken(token);
+                    String name = jwtService.getNameFromToken(token);
                     String role = jwtService.getRoleFromToken(token);
                     
-                    log.debug("Extracted claims from token - userId: {}, email: {}, role: {}", 
-                            userId, email, role);
+                    log.debug("Extracted claims from token - userId: {}, email: {}, name: {}, role: {}", 
+                            userId, email, name, role);
                     
                     // Create authenticated token with extracted claims
                     JwtAuthenticationToken authenticationToken = 
-                            new JwtAuthenticationToken(token, userId, email, role, null);
+                            new JwtAuthenticationToken(token, userId, email, name, role, null);
                     
                     // Set in SecurityContext for request processing
                     SecurityContextHolder.getContext().setAuthentication(authenticationToken);

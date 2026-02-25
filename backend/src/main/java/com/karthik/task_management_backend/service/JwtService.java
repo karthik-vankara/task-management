@@ -35,17 +35,19 @@ public class JwtService {
      * 
      * @param userId User ID from database
      * @param email User email address
+     * @param name User name
      * @param role User role (ADMIN or USER)
      * @return JWT token string (HS256 signed)
      */
-    public String generateToken(Long userId, String email, String role) {
+    public String generateToken(Long userId, String email, String name, String role) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("email", email);
+        claims.put("name", name);
         claims.put("role", role);
         
         String token = createToken(claims, userId.toString());
-        log.info("JWT token generated for user: {}", email);
+        log.info("JWT token generated for user: {} ({})", email, name);
         return token;
     }
     
@@ -91,6 +93,17 @@ public class JwtService {
         }
     }
     
+    /**
+     * Extract name from JWT token.
+     * 
+     * @param token JWT token string
+     * @return User name
+     */
+    public String getNameFromToken(String token) {
+        Claims claims = getAllClaimsFromToken(token);
+        return claims.get("name", String.class);
+    }
+
     /**
      * Extract user ID from JWT token.
      * 
