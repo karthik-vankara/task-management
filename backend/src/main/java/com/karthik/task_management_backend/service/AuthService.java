@@ -1,22 +1,31 @@
 package com.karthik.task_management_backend.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.karthik.task_management_backend.entity.User;
 import com.karthik.task_management_backend.entity.UserRole;
 import com.karthik.task_management_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -46,9 +55,17 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtService jwtService;
     private final InMemoryClientRegistrationRepository clientRegistrationRepository;
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
 
     @Value("${app.oauth2.state-param-length:32}")
     private int stateParamLength;
+
+    @Value("${spring.security.oauth2.client.registration.google.client-id:}")
+    private String googleClientId;
+
+    @Value("${spring.security.oauth2.client.registration.google.client-secret:}")
+    private String googleClientSecret;
 
     /**
      * Generate OAuth2 authorization URL for frontend redirect
@@ -91,55 +108,86 @@ public class AuthService {
     /**
      * Handle OAuth2 callback from Google
      * 
-     * In production, the authorization code would be exchanged for tokens via:
-     * 1. Backend calls Google token endpoint (POST /oauth2/v4/token)
-     * 2. Google returns access_token + id_token
-     * 3. Backend verifies ID token signature using Google's public keys
-     * 4. Extract user info (email, name, picture) from ID token claims
+     * Exchanges authorization code for tokens and extracts user information from Google.
      * 
-     * For this implementation, we create/update user and return JWT.
-     * 
-     * Flow summary:
-     * - Frontend gets authorization code from Google redirect
-     * - Frontend sends code to backend /api/auth/callback
-     * - Backend exchanges code for user info (in production)
-     * - Backend creates or updates user record
-     * - Backend generates JWT with userId, email, role
-     * - Backend returns JWT to frontend
+     * Flow:
+     * 1. Receive authorization code from Google redirect
+     * 2. Exchange code for access token and ID token
+     * 3. Decode ID token to get user claims (email, name, picture)
+     * 4. Create or update user in database
+     * 5. Generate JWT token for frontend
      * 
      * @param code OAuth2 authorization code from Google
-     * @param state State parameter for CSRF validation (should be validated against session state)
+     * @param state State parameter for CSRF validation
      * @return JWT token and user information
      */
     @Transactional
     public CallbackResponse handleOAuthCallback(String code, String state) {
-        log.info("Processing OAuth2 callback");
-
+        log.info("Processing OAuth2 callback with authorization code");
+        
         try {
-            // TODO: In production, verify state parameter against session
-            // if (!isValidState(state)) {
-            //     throw new SecurityException("Invalid OAuth2 state parameter");
-            // }
+            if (code == null || code.isEmpty()) {
+                log.error("Authorization code is null or empty");
+                throw new RuntimeException("Authorization code is required");
+            }
 
-            // TODO: In production, exchange code for tokens
-            // String accessToken = exchangeCodeForAccessToken(code);
-            // UserInfo userInfo = getUserInfoFromGoogle(accessToken);
+            if (googleClientId == null || googleClientId.isEmpty()) {
+                log.error("GOOGLE_CLIENT_ID is not configured");
+                throw new RuntimeException("Google client ID not configured");
+            }
 
-            // For demo purposes, we'll simulate user info extraction
-            // In production, comes from Google OAuth2 token exchange
-            String googleId = "google-" + System.currentTimeMillis();
-            String email = "user-" + System.currentTimeMillis() + "@example.com";
-            String name = "Test User";
-            String avatarUrl = "https://lh3.googleusercontent.com/a/default-user=s120-c";
+            if (googleClientSecret == null || googleClientSecret.isEmpty()) {
+                log.error("GOOGLE_CLIENT_SECRET is not configured");
+                throw new RuntimeException("Google client secret not configured");
+            }
 
-            log.debug("Received user info from OAuth2 provider - email: {}, name: {}", email, name);
+            log.debug("Step 1: Exchanging authorization code for tokens");
+            // Exchange authorization code for tokens
+            TokenResponse tokenResponse = exchangeCodeForTokens(code);
+            
+            if (tokenResponse == null) {
+                log.error("Token response is null");
+                throw new RuntimeException("Failed to obtain tokens from Google");
+            }
 
-            // Create or update user
+            if (tokenResponse.id_token == null) {
+                log.error("ID token is null in response");
+                throw new RuntimeException("Failed to obtain ID token from Google");
+            }
+
+            log.debug("Step 2: Successfully obtained ID token from Google");
+
+            // Extract user claims from ID token
+            Map<String, Object> claims = parseIdToken(tokenResponse.id_token);
+            
+            String googleId = (String) claims.get("sub");
+            String email = (String) claims.get("email");
+            String name = (String) claims.get("name");
+            String avatarUrl = (String) claims.get("picture");
+
+            if (googleId == null || googleId.isEmpty()) {
+                log.error("Missing sub (googleId) in Google ID token claims: {}", claims.keySet());
+                throw new RuntimeException("Invalid user data from Google: missing sub claim");
+            }
+
+            if (email == null || email.isEmpty()) {
+                log.error("Missing email in Google ID token claims");
+                throw new RuntimeException("Invalid user data from Google: missing email claim");
+            }
+
+            log.info("Step 3: Extracted user info from ID token - email: {}, name: {}, googleId: {}", 
+                    email, name, googleId);
+
+            // Create or update user with real data
+            log.debug("Step 4: Creating or updating user in database");
             User user = createOrUpdateUser(googleId, email, name, avatarUrl);
 
             // Generate JWT token
+            log.debug("Step 5: Generating JWT token");
             String jwtToken = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
-            log.info("Generated JWT token for user: {}", user.getId());
+            
+            log.info("OAuth2 callback completed successfully - JWT generated for user: {} ({})", 
+                    user.getId(), user.getEmail());
 
             return CallbackResponse.builder()
                     .token(jwtToken)
@@ -150,8 +198,135 @@ public class AuthService {
                     .build();
 
         } catch (Exception e) {
-            log.error("Error processing OAuth2 callback", e);
-            throw new RuntimeException("Authentication failed", e);
+            log.error("Error processing OAuth2 callback: {}", e.getMessage());
+            log.error("Exception class: {}", e.getClass().getName());
+            if (e.getCause() != null) {
+                log.error("Root cause: {}", e.getCause().getMessage());
+                e.getCause().printStackTrace();
+            }
+            e.printStackTrace();
+            throw new RuntimeException("Authentication failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Exchange authorization code for Google OAuth tokens
+     * 
+     * Makes POST request to Google token endpoint with form-encoded body.
+     * Google returns access_token and id_token.
+     * 
+     * @param code Authorization code from Google
+     * @return TokenResponse with access_token and id_token
+     */
+    private TokenResponse exchangeCodeForTokens(String code) {
+        try {
+            ClientRegistration googleClient = clientRegistrationRepository.findByRegistrationId("google");
+            if (googleClient == null) {
+                log.error("Google OAuth2 client not configured in application.yaml");
+                throw new RuntimeException("Google OAuth2 client not configured");
+            }
+
+            String tokenUrl = googleClient.getProviderDetails().getTokenUri();
+            String redirectUri = googleClient.getRedirectUri();
+
+            log.debug("Token URL: {}", tokenUrl);
+            log.debug("Redirect URI: {}", redirectUri);
+            log.debug("Authorization code: {}", code.substring(0, Math.min(10, code.length())) + "...");
+
+            // Build request body as form-encoded data (not URL parameters)
+            MultiValueMap<String, String> requestBody = new LinkedMultiValueMap<>();
+            requestBody.add("client_id", googleClientId);
+            requestBody.add("client_secret", googleClientSecret);
+            requestBody.add("code", code);
+            requestBody.add("redirect_uri", redirectUri);
+            requestBody.add("grant_type", "authorization_code");
+
+            // Set Content-Type header
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
+            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(requestBody, headers);
+
+            log.debug("Sending token exchange request to Google");
+
+            // Exchange code for tokens
+            ResponseEntity<String> responseEntity = restTemplate.postForEntity(tokenUrl, entity, String.class);
+
+            if (!responseEntity.getStatusCode().is2xxSuccessful()) {
+                log.error("Google token endpoint returned status: {}", responseEntity.getStatusCode());
+                log.error("Response body: {}", responseEntity.getBody());
+                throw new RuntimeException("Google token endpoint error: " + responseEntity.getStatusCode());
+            }
+
+            String response = responseEntity.getBody();
+
+            if (response == null || response.isEmpty()) {
+                log.error("Empty response from Google token endpoint");
+                throw new RuntimeException("Empty response from Google token endpoint");
+            }
+
+            log.debug("Successfully received response from Google token endpoint");
+            log.debug("Parsing token response");
+
+            TokenResponse tokenResponse = objectMapper.readValue(response, TokenResponse.class);
+            
+            if (tokenResponse.id_token == null) {
+                log.error("No id_token in Google response. Response: {}", response);
+                throw new RuntimeException("No id_token in Google response");
+            }
+
+            log.info("Successfully exchanged authorization code for tokens");
+            return tokenResponse;
+
+        } catch (Exception e) {
+            log.error("Error exchanging authorization code for tokens: {}", e.getMessage());
+            log.error("Exception type: {}", e.getClass().getName());
+            if (e.getCause() != null) {
+                log.error("Cause: {}", e.getCause().getMessage());
+            }
+            throw new RuntimeException("Failed to exchange authorization code: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Parse Google ID token to extract user claims
+     * 
+     * Decodes JWT (no signature verification - ID token signature verified by Google)
+     * Extracts claims: sub (google ID), email, name, picture
+     * 
+     * @param idToken JWT ID token from Google
+     * @return Map of claims from token payload
+     */
+    private Map<String, Object> parseIdToken(String idToken) {
+        try {
+            // ID token format: header.payload.signature
+            // We decode the payload (claims)
+            String[] parts = idToken.split("\\.");
+            if (parts.length != 3) {
+                throw new RuntimeException("Invalid ID token format");
+            }
+
+            // Decode payload (add padding if necessary)
+            String payload = parts[1];
+            payload = payload.replace("-", "+").replace("_", "/");
+            int padding = 4 - (payload.length() % 4);
+            if (padding != 4) {
+                payload += "=".repeat(padding);
+            }
+
+            byte[] decodedBytes = Base64.getDecoder().decode(payload);
+            String decodedPayload = new String(decodedBytes, StandardCharsets.UTF_8);
+            
+            log.debug("Decoded ID token payload: {}", decodedPayload);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> claims = objectMapper.readValue(decodedPayload, Map.class);
+            
+            return claims;
+
+        } catch (Exception e) {
+            log.error("Error parsing ID token", e);
+            throw new RuntimeException("Failed to parse ID token", e);
         }
     }
 
@@ -294,5 +469,23 @@ public class AuthService {
     public static class LogoutResponse {
         private String message;
         private long timestamp;
+    }
+
+    /**
+     * Response DTO for Google token endpoint
+     * 
+     * Maps the JSON response from Google's token exchange endpoint.
+     * Includes all fields that Google returns, ignores unknown properties
+     * to handle future API changes gracefully.
+     */
+    @lombok.Data
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+    public static class TokenResponse {
+        public String access_token;
+        public String id_token;
+        public int expires_in;
+        public String token_type;
+        public String scope;  // Google includes scope in response
+        public String refresh_token;  // May include refresh token
     }
 }

@@ -33,7 +33,7 @@ public class OAuth2Config {
     @Value("${spring.security.oauth2.client.registration.google.client-secret:}")
     private String googleClientSecret;
 
-    @Value("${spring.security.oauth2.client.registration.google.redirect-uri:http://localhost:8080/login/oauth2/code/google}")
+    @Value("${spring.security.oauth2.client.registration.google.redirect-uri:http://localhost:3000/auth/callback}")
     private String googleRedirectUri;
 
     /**

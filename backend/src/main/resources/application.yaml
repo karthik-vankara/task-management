@@ -1,7 +1,5 @@
 server:
   port: 8080
-  servlet:
-    context-path: /api
 
 logging:
   level:
@@ -33,7 +31,7 @@ spring:
           google:
             client-id: ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
-            redirect-uri: http://localhost:8080/login/oauth2/code/google
+            redirect-uri: http://localhost:3000/auth/callback
             scope:
               - email
               - profile
